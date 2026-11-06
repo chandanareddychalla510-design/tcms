@@ -1,4 +1,3 @@
-
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
@@ -6,6 +5,7 @@ from rest_framework.response import Response
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.settings import api_settings
 
 from .serializers import RegisterSerializer
 from .permissions import IsAdmin, IsAgent, IsCustomer
@@ -35,6 +35,15 @@ class LogoutView(APIView):
 
         try:
             token = RefreshToken(refresh_token)
+
+            # A user may only blacklist their own refresh token.
+            token_user_id = token.get(api_settings.USER_ID_CLAIM)
+            if token_user_id is None or str(token_user_id) != str(request.user.pk):
+                return Response(
+                    {'error': 'Refresh token does not belong to the authenticated user'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
             token.blacklist()
 
             return Response(
