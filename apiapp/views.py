@@ -20,21 +20,34 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
-from .models import UserProfile, Ticket, TicketMessage, FAQ
+from .models import (
+    UserProfile,
+    AgentProfile,
+    AgentAvailability,
+    Ticket,
+    TicketMessage,
+    FAQ,
+)
+
 from .serializers import (
     RegisterSerializer,
+    AgentProfileSerializer,
+    AgentAvailabilitySerializer,
     TicketSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
     TicketMessageSerializer,
     FAQSerializer,
 )
+
 from .permissions import IsAdmin, IsAgent, IsCustomer
+
 from .ai_services import (
     classify_ticket,
     generate_faq_answer,
     suggest_agent_response,
     summarize_conversation,
+    analyze_agent_workload,
 )
 
 
@@ -301,7 +314,6 @@ class CustomerDashboardView(APIView):
             "tickets": TicketSerializer(tickets, many=True).data,
         })
 
-
 # ---------------------------------
 # 7. AGENT DASHBOARD
 # ---------------------------------
@@ -314,17 +326,50 @@ class AgentDashboardView(APIView):
             agent=request.user
         ).order_by("-created_at")
 
+        total_tickets = tickets.count()
+
+        open_tickets = tickets.filter(
+            status="OPEN"
+        ).count()
+
+        assigned_tickets = tickets.filter(
+            status="ASSIGNED"
+        ).count()
+
+        in_progress_tickets = tickets.filter(
+            status="IN_PROGRESS"
+        ).count()
+
+        resolved_tickets = tickets.filter(
+            status="RESOLVED"
+        ).count()
+
+        active_workload = (
+            assigned_tickets + in_progress_tickets
+        )
+
+        if active_workload <= 2:
+            workload_level = "LOW"
+        elif active_workload <= 5:
+            workload_level = "MEDIUM"
+        else:
+            workload_level = "HIGH"
+
         return Response({
             "message": "Agent dashboard",
             "username": request.user.username,
-            "total_tickets": tickets.count(),
-            "assigned_tickets": tickets.filter(status="ASSIGNED").count(),
-            "in_progress_tickets": tickets.filter(
-                status="IN_PROGRESS"
-            ).count(),
-            "resolved_tickets": tickets.filter(status="RESOLVED").count(),
-            "tickets": TicketSerializer(tickets, many=True).data,
-        })
+            "total_tickets": total_tickets,
+            "open_tickets": open_tickets,
+            "assigned_tickets": assigned_tickets,
+            "in_progress_tickets": in_progress_tickets,
+            "resolved_tickets": resolved_tickets,
+            "active_workload": active_workload,
+            "workload_level": workload_level,
+            "tickets": TicketSerializer(
+                tickets,
+                many=True
+            ).data,
+        }, status=status.HTTP_200_OK)
 
 
 # ---------------------------------
@@ -951,4 +996,238 @@ class AIConversationSummaryView(APIView):
             return Response({
                 "message": "AI conversation summary service is unavailable",
                 "ai_status": "unavailable"
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+# ---------------------------------
+# 23. PHASE 5 - AGENT PROFILE API
+# ---------------------------------
+
+class AgentProfileView(APIView):
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    def get(self, request):
+        agent_profile, created = AgentProfile.objects.get_or_create(
+            user=request.user
+        )
+
+        serializer = AgentProfileSerializer(agent_profile)
+
+        return Response({
+            "message": "Agent profile retrieved successfully",
+            "profile": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        agent_profile, created = AgentProfile.objects.get_or_create(
+            user=request.user
+        )
+
+        serializer = AgentProfileSerializer(
+            agent_profile,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return Response({
+                "message": "Agent profile updated successfully",
+                "profile": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+# ---------------------------------
+# 24. PHASE 5 - AGENT AVAILABILITY API
+# ---------------------------------
+
+class AgentAvailabilityView(APIView):
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    def get(self, request):
+        availability, created = AgentAvailability.objects.get_or_create(
+            agent=request.user
+        )
+
+        serializer = AgentAvailabilitySerializer(availability)
+
+        return Response({
+            "message": "Agent availability retrieved successfully",
+            "availability": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        availability, created = AgentAvailability.objects.get_or_create(
+            agent=request.user
+        )
+
+        serializer = AgentAvailabilitySerializer(
+            availability,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return Response({
+                "message": "Agent availability updated successfully",
+                "availability": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+# ---------------------------------
+# 25. PHASE 5 - AI AGENT WORKLOAD ANALYSIS
+# ---------------------------------
+
+class AIWorkloadAnalysisView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+
+        agents = User.objects.filter(
+            profile__role="AGENT"
+        ).select_related(
+            "profile"
+        ).order_by("id")
+
+        agent_data = []
+
+        for agent in agents:
+
+            availability = AgentAvailability.objects.filter(
+                agent=agent
+            ).first()
+
+            agent_status = (
+                availability.status
+                if availability
+                else "AVAILABLE"
+            )
+
+            agent_profile = AgentProfile.objects.filter(
+                user=agent
+            ).first()
+
+            specialization = (
+                agent_profile.specialization
+                if agent_profile
+                else ""
+            )
+
+            assigned_tickets = Ticket.objects.filter(
+                agent=agent,
+                status="ASSIGNED"
+            ).count()
+
+            in_progress_tickets = Ticket.objects.filter(
+                agent=agent,
+                status="IN_PROGRESS"
+            ).count()
+
+            active_workload = (
+                assigned_tickets + in_progress_tickets
+            )
+
+            agent_data.append({
+                "agent_id": agent.id,
+                "username": agent.username,
+                "availability": agent_status,
+                "specialization": specialization,
+                "assigned_tickets": assigned_tickets,
+                "in_progress_tickets": in_progress_tickets,
+                "active_workload": active_workload,
+            })
+
+        unassigned = Ticket.objects.filter(
+            status="OPEN",
+            agent__isnull=True
+        ).order_by("-priority", "created_at")
+
+        unassigned_tickets = [
+            {
+                "ticket_id": ticket.id,
+                "ticket_number": ticket.ticket_number,
+                "subject": ticket.subject,
+                "category": ticket.category,
+                "priority": ticket.priority,
+            }
+            for ticket in unassigned
+        ]
+
+        try:
+            ai_result = analyze_agent_workload(
+                agent_data,
+                unassigned_tickets
+            )
+
+            # Validate AI suggestions against actual database records.
+            valid_agents = {
+                agent["agent_id"]: agent
+                for agent in agent_data
+                if agent["availability"] == "AVAILABLE"
+            }
+
+            valid_tickets = {
+                ticket["ticket_id"]: ticket
+                for ticket in unassigned_tickets
+            }
+
+            valid_suggestions = []
+
+            for suggestion in ai_result.get("suggestions", []):
+
+                if not isinstance(suggestion, dict):
+                    continue
+
+                ticket_id = suggestion.get("ticket_id")
+                agent_id = suggestion.get("suggested_agent_id")
+
+                if ticket_id not in valid_tickets:
+                    continue
+
+                if agent_id not in valid_agents:
+                    continue
+
+                ticket = valid_tickets[ticket_id]
+                agent = valid_agents[agent_id]
+
+                valid_suggestions.append({
+                    "ticket_id": ticket_id,
+                    "ticket_number": ticket["ticket_number"],
+                    "suggested_agent_id": agent_id,
+                    "suggested_agent": agent["username"],
+                    "reason": str(
+                        suggestion.get("reason", "")
+                    )[:500],
+                })
+
+            return Response({
+                "message": "AI workload analysis completed successfully",
+                "agents": agent_data,
+                "unassigned_tickets_count": len(unassigned_tickets),
+                "analysis": ai_result.get("analysis", ""),
+                "suggestions": valid_suggestions,
+                "recommendation": ai_result.get(
+                    "recommendation", ""
+                ),
+                "ai_status": "success",
+                "auto_assignment": False,
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print("Gemini workload analysis error:", repr(e))
+
+            return Response({
+                "message": "AI workload analysis service is unavailable",
+                "ai_status": "unavailable",
             }, status=status.HTTP_503_SERVICE_UNAVAILABLE)

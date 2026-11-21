@@ -27,6 +27,10 @@ def get_ai_response(prompt):
     return response.output_text.strip()
 
 
+# ---------------------------------
+# 1. AI TICKET CLASSIFICATION
+# ---------------------------------
+
 def classify_ticket(subject, description):
     prompt = f"""
     Analyze this customer support ticket.
@@ -62,6 +66,10 @@ def classify_ticket(subject, description):
         raise ValueError("AI returned an invalid ticket classification")
 
 
+# ---------------------------------
+# 2. AI FAQ ANSWER GENERATION
+# ---------------------------------
+
 def generate_faq_answer(question, faq_context=""):
     prompt = f"""
     Answer the customer's question using the FAQ information below.
@@ -80,6 +88,10 @@ def generate_faq_answer(question, faq_context=""):
     return get_ai_response(prompt)
 
 
+# ---------------------------------
+# 3. AI AGENT REPLY SUGGESTION
+# ---------------------------------
+
 def suggest_agent_response(ticket_subject, customer_message):
     prompt = f"""
     Suggest a professional and helpful reply for a customer support agent.
@@ -93,6 +105,10 @@ def suggest_agent_response(ticket_subject, customer_message):
 
     return get_ai_response(prompt)
 
+
+# ---------------------------------
+# 4. AI CONVERSATION SUMMARY
+# ---------------------------------
 
 def summarize_conversation(messages):
     conversation = "\n".join(
@@ -118,3 +134,63 @@ def summarize_conversation(messages):
     """
 
     return get_ai_response(prompt)
+
+
+# ---------------------------------
+# 5. PHASE 5 - AI AGENT WORKLOAD ANALYSIS
+# ---------------------------------
+
+def analyze_agent_workload(agent_data, unassigned_tickets):
+    prompt = f"""
+    You are an AI assistant for a Ticket Management System.
+
+    Analyze the following agent workload information.
+
+    AGENT DETAILS:
+    {json.dumps(agent_data, indent=2)}
+
+    UNASSIGNED TICKETS:
+    {json.dumps(unassigned_tickets, indent=2)}
+
+    Rules:
+    1. Consider only AVAILABLE agents for new assignments.
+    2. Prefer agents with lower active workload.
+    3. Consider agent specialization and ticket category.
+    4. Consider ticket priority.
+    5. Do not recommend BUSY or OFFLINE agents for new assignments.
+    6. Do not assign tickets automatically.
+    7. If no suitable available agent exists, clearly mention that.
+
+    Return ONLY valid JSON in this format:
+
+    {{
+        "analysis": "Overall workload analysis",
+        "suggestions": [
+            {{
+                "ticket_id": 1,
+                "ticket_number": "TECH-00001",
+                "suggested_agent_id": 2,
+                "suggested_agent": "agent1",
+                "reason": "Reason for recommendation"
+            }}
+        ],
+        "recommendation": "Final recommendation for admin"
+    }}
+    """
+
+    result = get_ai_response(prompt)
+
+    try:
+        result = result.replace("```json", "").replace("```", "").strip()
+        data = json.loads(result)
+
+        if not isinstance(data, dict):
+            raise ValueError("Invalid AI response")
+
+        if not isinstance(data.get("suggestions"), list):
+            raise ValueError("Suggestions must be a list")
+
+        return data
+
+    except (json.JSONDecodeError, ValueError):
+        raise ValueError("AI returned invalid workload analysis")

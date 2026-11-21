@@ -123,10 +123,6 @@ class Ticket(models.Model):
         return self.ticket_number or "New Ticket"
 
 
-# ---------------------------------
-# TICKET CONVERSATION / MESSAGES
-# ---------------------------------
-
 class TicketMessage(models.Model):
 
     ticket = models.ForeignKey(
@@ -144,7 +140,6 @@ class TicketMessage(models.Model):
     message = models.TextField()
 
     created_at = models.DateTimeField(auto_now_add=True)
-
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -153,10 +148,6 @@ class TicketMessage(models.Model):
     def __str__(self):
         return f"Message on {self.ticket.ticket_number}"
 
-
-# ---------------------------------
-# FAQ MODULE
-# ---------------------------------
 
 class FAQ(models.Model):
 
@@ -167,13 +158,10 @@ class FAQ(models.Model):
     )
 
     question = models.CharField(max_length=500)
-
     answer = models.TextField()
-
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
-
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -181,3 +169,64 @@ class FAQ(models.Model):
 
     def __str__(self):
         return self.question
+
+
+# ---------------------------------
+# PHASE 5 - AGENT PROFILE
+# ---------------------------------
+
+class AgentProfile(models.Model):
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='agent_profile'
+    )
+
+    phone_number = models.CharField(
+        max_length=15,
+        blank=True
+    )
+
+    specialization = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    bio = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - Agent Profile"
+
+
+# ---------------------------------
+# PHASE 5 - AGENT AVAILABILITY
+# ---------------------------------
+
+class AgentAvailability(models.Model):
+
+    STATUS_CHOICES = [
+        ('AVAILABLE', 'Available'),
+        ('BUSY', 'Busy'),
+        ('OFFLINE', 'Offline'),
+    ]
+
+    agent = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='agent_availability'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='AVAILABLE'
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.agent.username} - {self.status}"

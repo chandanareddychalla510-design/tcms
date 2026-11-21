@@ -26,9 +26,14 @@ from .views import (
     TicketConversationView,
     FAQListCreateView,
     FAQDetailView,
+
     AIFAQAnswerView,
     AIAgentReplySuggestionView,
     AIConversationSummaryView,
+
+    AgentProfileView,
+    AgentAvailabilityView,
+    AIWorkloadAnalysisView,
 )
 
 from rest_framework_simplejwt.views import (
@@ -69,6 +74,17 @@ urlpatterns = [
     path('agent/tickets/<int:pk>/accept/', AgentAcceptTicketView.as_view(), name='accept-ticket'),
     path('agent/tickets/<int:pk>/resolve/', AgentResolveTicketView.as_view(), name='resolve-ticket'),
 
+    # Agent Profile - Phase 5
+    path('agent/profile/', AgentProfileView.as_view(), name='agent-profile'),
+    path('agent/availability/', AgentAvailabilityView.as_view(), name='agent-availability'),
+
+    # AI Agent Workload Analysis - Phase 5
+    path(
+        'admin/ai-workload-analysis/',
+        AIWorkloadAnalysisView.as_view(),
+        name='ai-workload-analysis'
+    ),
+
     # Ticket Conversation
     path('tickets/<int:pk>/messages/', TicketConversationView.as_view(), name='ticket-conversation'),
 
@@ -78,16 +94,8 @@ urlpatterns = [
     path('faqs/<int:pk>/', FAQDetailView.as_view(), name='faq-detail'),
 
     # AI Agent Reply Suggestion
-    path(
-        'agent/tickets/<int:pk>/suggest-reply/',
-        AIAgentReplySuggestionView.as_view(),
-        name='ai-agent-reply-suggestion'
-    ),
+    path('agent/tickets/<int:pk>/suggest-reply/', AIAgentReplySuggestionView.as_view(), name='ai-agent-reply-suggestion'),
 
     # AI Conversation Summary
-    path(
-        'tickets/<int:pk>/ai-summary/',
-        AIConversationSummaryView.as_view(),
-        name='ai-conversation-summary'
-    ),
+    path('tickets/<int:pk>/ai-summary/', AIConversationSummaryView.as_view(), name='ai-conversation-summary'),
 ]
