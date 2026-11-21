@@ -69,7 +69,7 @@ class AuthenticationAndAuthorizationTests(APITestCase):
         response = self.client.get("/api/customer-dashboard/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Welcome Customer")
+        self.assertEqual(response.data["message"], "Customer dashboard")
 
     def test_unauthenticated_user_cannot_access_dashboard(self):
         response = self.client.get("/api/customer-dashboard/")

@@ -30,7 +30,12 @@ from .serializers import (
     FAQSerializer,
 )
 from .permissions import IsAdmin, IsAgent, IsCustomer
-from .ai_services import classify_ticket
+from .ai_services import (
+    classify_ticket,
+    generate_faq_answer,
+    suggest_agent_response,
+    summarize_conversation,
+)
 
 
 # ---------------------------------
@@ -371,7 +376,6 @@ class CustomerTicketCreateView(APIView):
             ai_reason = ""
 
             try:
-                # Gemini AI ticket classification
                 ai_result = classify_ticket(subject, description)
 
                 category = ai_result["category"]
@@ -379,16 +383,13 @@ class CustomerTicketCreateView(APIView):
                 ai_reason = ai_result.get("reason", "")
 
             except Exception as e:
-                # Print actual Gemini error in terminal
                 print("Gemini classification error:", repr(e))
 
-                # Fallback values if AI fails
                 category = "GENERAL"
                 priority = "MEDIUM"
                 ai_status = "unavailable"
                 ai_reason = "AI classification could not be completed."
 
-            # Save ticket with AI classification
             ticket = serializer.save(
                 customer=request.user,
                 category=category,
@@ -406,6 +407,7 @@ class CustomerTicketCreateView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
 
 # ---------------------------------
 # 10. ADMIN VIEW ALL TICKETS
@@ -676,7 +678,6 @@ class TicketConversationView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
-
 # ---------------------------------
 # 18. FAQ LIST AND CREATE
 # ---------------------------------
@@ -787,3 +788,167 @@ class FAQDetailView(APIView):
             {"message": "FAQ deactivated successfully"},
             status=status.HTTP_200_OK
         )
+
+
+# ---------------------------------
+# 20. AI-POWERED FAQ ANSWER
+# ---------------------------------
+
+class AIFAQAnswerView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        question = request.data.get("question")
+
+        if not isinstance(question, str) or not question.strip():
+            return Response(
+                {"error": "Question is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        faqs = FAQ.objects.filter(is_active=True)
+
+        faq_context = "\n".join([
+            f"Category: {faq.category}\n"
+            f"Question: {faq.question}\n"
+            f"Answer: {faq.answer}"
+            for faq in faqs
+        ])
+
+        if not faq_context:
+            faq_context = "No FAQ information is currently available."
+
+        try:
+            answer = generate_faq_answer(
+                question.strip(),
+                faq_context
+            )
+
+            return Response({
+                "message": "AI FAQ answer generated successfully",
+                "question": question.strip(),
+                "answer": answer,
+                "ai_status": "success"
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print("Gemini FAQ error:", repr(e))
+
+            return Response({
+                "message": "AI FAQ service is currently unavailable",
+                "ai_status": "unavailable"
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+# ---------------------------------
+# 21. AI AGENT REPLY SUGGESTION
+# ---------------------------------
+
+class AIAgentReplySuggestionView(APIView):
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    def post(self, request, pk):
+        ticket = get_object_or_404(
+            Ticket,
+            pk=pk,
+            agent=request.user
+        )
+
+        latest_message = ticket.messages.filter(
+            sender=ticket.customer
+        ).order_by("-created_at").first()
+
+        if latest_message is None:
+            return Response(
+                {"error": "No customer message found for this ticket"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            suggested_reply = suggest_agent_response(
+                ticket.subject,
+                latest_message.message
+            )
+
+            return Response({
+                "message": "AI reply suggestion generated successfully",
+                "ticket_number": ticket.ticket_number,
+                "customer_message": latest_message.message,
+                "suggested_reply": suggested_reply,
+                "ai_status": "success"
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print("Gemini agent reply error:", repr(e))
+
+            return Response({
+                "message": "AI reply suggestion service is unavailable",
+                "ai_status": "unavailable"
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+# ---------------------------------
+# 22. AI CONVERSATION SUMMARY
+# ---------------------------------
+
+class AIConversationSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        ticket = get_object_or_404(Ticket, pk=pk)
+
+        profile = getattr(request.user, "profile", None)
+
+        is_admin = (
+            request.user.is_superuser
+            or (
+                profile is not None
+                and profile.role == "ADMIN"
+            )
+        )
+
+        is_customer = ticket.customer_id == request.user.id
+        is_assigned_agent = ticket.agent_id == request.user.id
+
+        if not (is_admin or is_customer or is_assigned_agent):
+            return Response(
+                {"error": "You do not have permission to view this conversation"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        messages = ticket.messages.select_related(
+            "sender"
+        ).order_by("created_at")
+
+        if not messages.exists():
+            return Response(
+                {"error": "No conversation messages found for this ticket"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        conversation_data = [
+            {
+                "sender": message.sender.username,
+                "message": message.message
+            }
+            for message in messages
+        ]
+
+        try:
+            summary = summarize_conversation(conversation_data)
+
+            return Response({
+                "message": "AI conversation summary generated successfully",
+                "ticket_number": ticket.ticket_number,
+                "total_messages": messages.count(),
+                "summary": summary,
+                "ai_status": "success"
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print("Gemini conversation summary error:", repr(e))
+
+            return Response({
+                "message": "AI conversation summary service is unavailable",
+                "ai_status": "unavailable"
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)

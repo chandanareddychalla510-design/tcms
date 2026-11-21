@@ -26,6 +26,9 @@ from .views import (
     TicketConversationView,
     FAQListCreateView,
     FAQDetailView,
+    AIFAQAnswerView,
+    AIAgentReplySuggestionView,
+    AIConversationSummaryView,
 )
 
 from rest_framework_simplejwt.views import (
@@ -71,5 +74,20 @@ urlpatterns = [
 
     # FAQ APIs
     path('faqs/', FAQListCreateView.as_view(), name='faq-list-create'),
+    path('faqs/ask/', AIFAQAnswerView.as_view(), name='ai-faq-answer'),
     path('faqs/<int:pk>/', FAQDetailView.as_view(), name='faq-detail'),
+
+    # AI Agent Reply Suggestion
+    path(
+        'agent/tickets/<int:pk>/suggest-reply/',
+        AIAgentReplySuggestionView.as_view(),
+        name='ai-agent-reply-suggestion'
+    ),
+
+    # AI Conversation Summary
+    path(
+        'tickets/<int:pk>/ai-summary/',
+        AIConversationSummaryView.as_view(),
+        name='ai-conversation-summary'
+    ),
 ]
